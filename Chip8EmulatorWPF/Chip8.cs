@@ -42,7 +42,7 @@ namespace Chip8EmulatorWPF
                                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
                                 0xF0, 0x80, 0xF0, 0x80, 0x80 };
 
-        //CPU context
+        //CPU context test
         private byte[] mainMemory;
         private byte[] vRegs;
         private ushort Ireg;

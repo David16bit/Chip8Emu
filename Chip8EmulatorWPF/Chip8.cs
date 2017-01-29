@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Drawing;
 using System.IO;
+using System.ComponentModel;
 
 namespace Chip8EmulatorWPF
 {
@@ -42,7 +43,7 @@ namespace Chip8EmulatorWPF
                                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
                                 0xF0, 0x80, 0xF0, 0x80, 0x80 };
 
-        //CPU context test
+        //CPU context
         private byte[] mainMemory;
         private byte[] vRegs;
         private ushort Ireg;
@@ -50,23 +51,58 @@ namespace Chip8EmulatorWPF
         private ushort stackPtr;
         private byte delayTimer;
         private byte soundTimer;
+        private BackgroundWorker worker;
 
         // input & output
         private byte[] screenBuffer;
         System.Windows.Media.Imaging.BitmapSource screenCapture;
         Color[] pallete = new Color[] {
             Color.FromArgb(00,00,33), Color.FromArgb(102,170,51) };
-        public int[] keys; // state of inputs
+        public int[] gamePad; // state of inputs
+        System.Windows.Controls.Image display;
 
         //rom
         private byte[] romBuffer;
 
+        //chip8 status
+        private bool powerStatus = false;
+
         public Chip8()
         {
-            reset();
+            init();
         }
 
-        public void reset()
+        public bool IsOn()
+        {
+            return powerStatus;
+        }
+
+        public void connectDisplay(System.Windows.Controls.Image display)
+        {
+            this.display = display;
+            display.Source = Utli.loadBitmap(getScreenBitmap());
+        }
+
+        public void powerOn()
+        {
+            powerStatus = true;
+            cpuCycle();
+        }
+
+        public void powerOff()
+        {
+            powerStatus = false;
+            init();
+            //cpuCycle();
+        }
+
+        public void powerReset()
+        {
+            if(powerStatus)
+            cpuCycle();
+        }
+
+        public void init()
         {
             //init cpu context
             mainMemory = new byte[MAIN_MEMOY_SIZE];
@@ -79,7 +115,7 @@ namespace Chip8EmulatorWPF
 
             //init i/o
             screenBuffer = new byte[SCREEN_HEIGHT * SCREEN_WIDTH];
-            keys = new int[0x10]; // state of inputs
+            gamePad = new int[0x10]; // state of inputs
 
             //load font data into memory
             for (int i = FONT_BASE_ADDR; i < FONT_BASE_SIZE; i++)
@@ -88,7 +124,7 @@ namespace Chip8EmulatorWPF
             }
         }
 
-        public void loadRom(string romFile)
+        public void insertGame(string romFile)
         {
             try
             {
@@ -105,8 +141,89 @@ namespace Chip8EmulatorWPF
             }
         }
 
+        private void cpuCycle()
+        {
+            if (worker != null)
+            {
+                worker.CancelAsync();
+            }
+            else
+            {
+                //activate chip8 cpu cycle thread here on first run.
+                runChip8Thread();
+            }
+        }
 
-        public void cpuStep()
+        private void runChip8Thread()
+        {
+            worker = new BackgroundWorker();
+            worker.WorkerReportsProgress = true;
+            worker.DoWork += workerDoWork;
+            worker.ProgressChanged += workerProgressChanged;
+            worker.WorkerSupportsCancellation = true;
+            worker.RunWorkerCompleted += workerRunWorkerCompleted;
+            worker.RunWorkerAsync();
+        }
+
+        void workerDoWork(object sender, DoWorkEventArgs e)
+        {
+
+
+            bool run = true;
+            while (run)
+            {
+                if (worker.CancellationPending == true)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+                else
+                    chip8FrameCycle(sender);
+            }
+
+        }
+
+
+        void workerProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+            //update screen
+            display.Source = Utli.loadBitmap(getScreenBitmap());
+        }
+
+
+        void workerRunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            if (e.Cancelled)
+            {
+                if(powerStatus)
+                    runChip8Thread();
+            }
+        }
+
+        void chip8FrameCycle(object sender)
+        {
+            long startTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+
+            //run frame cycle
+            for (int i = 0; i < Chip8.INSTRUCTION_PER_FRAME; i++)
+            {
+                cpuStep();
+            }
+            //update screen and timer
+             updateTimers();
+            (sender as BackgroundWorker).ReportProgress(0);
+
+            //sleep until milli seconds per frame(17millis) has passed.
+            long endTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+            int delay = (int)(Chip8.MILLI_SEC_PER_FRAME - (endTime - startTime));
+            if (delay > 0)
+            {
+                System.Threading.Thread.Sleep(delay);
+            }
+        }
+
+
+        private void cpuStep()
         {
             //fetch instruction
             ushort opcode = (ushort)((mainMemory[pc] << 8) | mainMemory[pc + 1]);
@@ -317,12 +434,12 @@ namespace Chip8EmulatorWPF
                         switch (Utli.getLowerByte(opcode))
                         {
                             case 0x9E://EX9E Skips the next instruction if the key stored in VX is pressed.
-                                if (keys[vRegs[Utli.getUpperByteLowNibble(opcode)]] == 1)
+                                if (gamePad[vRegs[Utli.getUpperByteLowNibble(opcode)]] == 1)
                                     pc += 2;
                                 break;
 
                             case 0xA1://EXA1 Skips the next instruction if the key stored in VX isn't pressed.
-                                if (keys[vRegs[Utli.getUpperByteLowNibble(opcode)]] != 1)
+                                if (gamePad[vRegs[Utli.getUpperByteLowNibble(opcode)]] != 1)
                                     pc += 2;
                                 break;
 
@@ -345,12 +462,12 @@ namespace Chip8EmulatorWPF
                                 {
                                     bool keyPressed = false;
 
-                                    for (int i = 0; i < keys.Length; i++)
+                                    for (int i = 0; i < gamePad.Length; i++)
                                     {
-                                        if (keys[i] == 1)
+                                        if (gamePad[i] == 1)
                                         {
                                             keyPressed = true;
-                                            i = keys.Length + 1;//end loop
+                                            i = gamePad.Length + 1;//end loop
                                         }
                                     }
 

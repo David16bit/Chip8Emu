@@ -11,8 +11,25 @@ using System.Windows;
 
 namespace Chip8EmulatorWPF
 {
+    /// <summary>
+    /// 2016 - David Brown (asapdavid91@gmail.com)
+    /// Chip8 WPF Hexadecimal editor
+    /// </summary>
+
     public static class Utli
     {
+        
+        public static string StringToHex(string hexstring)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (char t in hexstring)
+            {
+                //Note: X for upper, x for lower case letters
+                sb.Append(Convert.ToInt32(t).ToString("X"));
+            }
+            return sb.ToString();
+        }
+
         public static byte getHighByte(ushort val)
         {
             return (byte)(val >> 8);

@@ -6,16 +6,25 @@ using System.Threading.Tasks;
 using System.Drawing;
 using System.IO;
 using System.ComponentModel;
+using Chip8EmulatorWPF.Chip8Emulator;
+using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace Chip8EmulatorWPF
 {
+    /// <summary>
+    /// 2016 - David Brown (asapdavid91@gmail.com)
+    /// Chip8 WPF Hexadecimal editor
+    /// </summary>
+
     class Chip8
     {
         //constants
-        private const ushort STACK_BASE_ADDR = 0xEA0;
         private const ushort FONT_BASE_ADDR = 0x000;
         private const ushort FONT_BASE_SIZE = 0x50; //80 bytes
 
+        public const ushort STACK_BASE_ADDR = 0xEA0;
         public const byte INSTRUCTION_PER_FRAME = 16;
         public const long MILLI_SEC_PER_FRAME = 17;
         public const ushort ROM_BASE_ADDR = 0x200;
@@ -42,6 +51,9 @@ namespace Chip8EmulatorWPF
                                 0xE0, 0x90, 0x90, 0x90, 0xE0,
                                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
                                 0xF0, 0x80, 0xF0, 0x80, 0x80 };
+        //pallete data
+        Color[] pallete = new Color[] {
+            Color.FromArgb(00,00,33), Color.FromArgb(102,170,51) };
 
         //CPU context
         private byte[] mainMemory;
@@ -52,20 +64,31 @@ namespace Chip8EmulatorWPF
         private byte delayTimer;
         private byte soundTimer;
         private BackgroundWorker worker;
-
+       
         // input & output
         private byte[] screenBuffer;
-        System.Windows.Media.Imaging.BitmapSource screenCapture;
-        Color[] pallete = new Color[] {
-            Color.FromArgb(00,00,33), Color.FromArgb(102,170,51) };
+        private byte[] blankScreenBuffer = new byte[SCREEN_HEIGHT * SCREEN_WIDTH];
         public int[] gamePad; // state of inputs
-        System.Windows.Controls.Image display;
+        private System.Windows.Controls.Image display;
+      
 
         //rom
-        private byte[] romBuffer;
-
-        //chip8 status
+        private Game game;
+        private string gameToBeLoaded;
+        private bool swapGameFlag;
+     
+        //chip8 flags
         private bool powerStatus = false;
+        private bool cpuHalt = false;
+        private bool resetFlag = false;
+        private bool debugMode = false;
+        private bool breakPointFlag = false;
+
+        //breakpoint addresses
+        public List<ushort> brkPtAddresses = new List<ushort>();
+
+        //debugger gui interface
+        private DebuggerWindow debuggerWindow;
 
         public Chip8()
         {
@@ -80,38 +103,69 @@ namespace Chip8EmulatorWPF
         public void connectDisplay(System.Windows.Controls.Image display)
         {
             this.display = display;
-            display.Source = Utli.loadBitmap(getScreenBitmap());
+            if(display != null)
+                display.Source = Utli.loadBitmap(getScreenBitmap(screenBuffer));
         }
+
+        public void clearDisplay()
+        {
+            if(display != null)
+                display.Source = Utli.loadBitmap(getScreenBitmap(blankScreenBuffer));
+        }
+        public bool PowerStatus
+        {
+            get
+            {return powerStatus;}
+
+            set
+            {powerStatus = value;}
+        }
+
 
         public void powerOn()
         {
-            powerStatus = true;
-            cpuCycle();
+            if (powerStatus == false)
+            {
+                powerStatus = true;
+                cpuCycle();
+            }
         }
 
         public void powerOff()
         {
-            powerStatus = false;
-            init();
-            //cpuCycle();
+            if (powerStatus)
+            {
+                powerStatus = false;
+                worker.CancelAsync();
+            }
         }
 
+        
         public void powerReset()
         {
-            if(powerStatus)
-            cpuCycle();
+            resetFlag = true;
+            powerOff();
         }
 
-        public void init()
+        public void swapGame(string game)
+        {
+            swapGameFlag = true;
+            gameToBeLoaded = game;
+            worker.CancelAsync();
+        }
+
+        public bool isRomLoaded()
+        {
+            if (!(game.getRom() == null))
+                return true;
+            else
+                return false;
+        }
+
+        private void init()
         {
             //init cpu context
-            mainMemory = new byte[MAIN_MEMOY_SIZE];
-            vRegs = new byte[0x10];
-            Ireg = 0;
-            pc = ROM_BASE_ADDR;
-            stackPtr = STACK_BASE_ADDR;
-            delayTimer = 0;
-            soundTimer = 0;
+            initCpuContext();
 
             //init i/o
             screenBuffer = new byte[SCREEN_HEIGHT * SCREEN_WIDTH];
@@ -122,14 +176,33 @@ namespace Chip8EmulatorWPF
             {
                 mainMemory[i] = chip8FontSet[i];
             }
+
+            game = new Game();
         }
 
-        public void insertGame(string romFile)
+        public List<DecodedInstruction> decodedRom()
+        {
+            return game.getDecodeRom();
+        }
+
+        private void initCpuContext()
+        {
+            mainMemory = new byte[MAIN_MEMOY_SIZE];
+            vRegs = new byte[0x10];
+            Ireg = 0;
+            pc = ROM_BASE_ADDR;
+            stackPtr = STACK_BASE_ADDR;
+            delayTimer = 0;
+            soundTimer = 0;
+        }
+
+        public void loadGame(string romFile)
         {
             try
             {
-                romBuffer = File.ReadAllBytes(romFile);
-
+                game.loadRom(romFile);
+                byte[] romBuffer = game.getRom();
+                
                 for (int i = 0; i < romBuffer.Length; i++)
                 {
                     mainMemory[ROM_BASE_ADDR + i] = romBuffer[i];
@@ -143,15 +216,8 @@ namespace Chip8EmulatorWPF
 
         private void cpuCycle()
         {
-            if (worker != null)
-            {
-                worker.CancelAsync();
-            }
-            else
-            {
-                //activate chip8 cpu cycle thread here on first run.
-                runChip8Thread();
-            }
+            //activate chip8 cpu cycle thread here on first run.
+            runChip8Thread();
         }
 
         private void runChip8Thread()
@@ -163,12 +229,11 @@ namespace Chip8EmulatorWPF
             worker.WorkerSupportsCancellation = true;
             worker.RunWorkerCompleted += workerRunWorkerCompleted;
             worker.RunWorkerAsync();
+
         }
 
         void workerDoWork(object sender, DoWorkEventArgs e)
         {
-
-
             bool run = true;
             while (run)
             {
@@ -187,7 +252,8 @@ namespace Chip8EmulatorWPF
         void workerProgressChanged(object sender, ProgressChangedEventArgs e)
         {
             //update screen
-            display.Source = Utli.loadBitmap(getScreenBitmap());
+            if(display != null)
+                display.Source = Utli.loadBitmap(getScreenBitmap(screenBuffer));
         }
 
 
@@ -195,9 +261,66 @@ namespace Chip8EmulatorWPF
         {
             if (e.Cancelled)
             {
-                if(powerStatus)
-                    runChip8Thread();
+                //cpuHalt flag controls the state of the Chip8 when the Cpu loop thread ends
+                //If cpuHalt is true, the thread that is currently carrying out the cpu loop will end without altering 
+                //the current state of the chip8, thus, if desired, a new Cpu thread can be invoked and start
+                //executing from the last state processed by the previous cpu loop thread
+                //If false, the chip8 properties are re-initilizing to the state it was in prior to the excution of the rom
+                if (!cpuHalt) 
+                {
+                    String path = game.Path;
+                    init();
+                    if (swapGameFlag)
+                    {
+                        swapGameFlag = false;
+                        loadGame(gameToBeLoaded);
+                        worker = null;
+                        cpuCycle();
+                    }
+                    else
+                    {
+                        loadGame(path);
+                    }
+    
+                    //exectued if reset() is called to end chip8 simulation
+                    if (resetFlag)
+                    {
+                        resetFlag = false;
+                        worker = null;
+                        powerOn();
+                        debuggerWindow.initRoutine();
+                    }
+                   
+                }
+
+               
+                //Set by a breakpoint being flagged which can only occur if the chip8 debugMode variable is set to true
+                if(breakPointFlag)
+                {
+                    breakPointFlag = false;
+                    debuggerWindow.breakPointPause();
+                    debuggerWindow.BreakPointTrigger = true;
+                }
+
             }
+        }
+
+        private bool breakPointCheck()
+        {
+            //dependent condtion - debugger window open, cpu is being simulated
+            if (debugMode && (!cpuHalt))
+            {
+                for (int j = 0; j < brkPtAddresses.Count(); j++)
+                {
+                    if (pc == brkPtAddresses[j])
+                    {
+                        breakPointFlag = true;
+                        haltContinousCpuCycle();
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         void chip8FrameCycle(object sender)
@@ -207,11 +330,16 @@ namespace Chip8EmulatorWPF
             //run frame cycle
             for (int i = 0; i < Chip8.INSTRUCTION_PER_FRAME; i++)
             {
+                //break point check
+                if (breakPointCheck())
+                    return;
+
                 cpuStep();
             }
+
             //update screen and timer
              updateTimers();
-            (sender as BackgroundWorker).ReportProgress(0);
+             (sender as BackgroundWorker).ReportProgress(0);
 
             //sleep until milli seconds per frame(17millis) has passed.
             long endTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
@@ -223,8 +351,9 @@ namespace Chip8EmulatorWPF
         }
 
 
-        private void cpuStep()
+        public void cpuStep()
         {
+
             //fetch instruction
             ushort opcode = (ushort)((mainMemory[pc] << 8) | mainMemory[pc + 1]);
             pc += 2;
@@ -259,6 +388,8 @@ namespace Chip8EmulatorWPF
                                 Console.WriteLine("0NNN - Calls RCA 1802 program at address NNN. Not necessary for most ROMs.");
                             else
                                 Console.WriteLine("Unknown Opcode - " + "0x" + opcode.ToString("x2"));
+
+                            pc += 2;
                         }
                     }
                     break;
@@ -530,9 +661,50 @@ namespace Chip8EmulatorWPF
                     Console.WriteLine("Unimplemented Opcode - " + "0x" + opcode.ToString("x2"));
                     break;
             }
+        }
 
-           
+        public void haltContinousCpuCycle()
+        {
+            cpuHalt = true;
+            worker.CancelAsync();
+        }
 
+        public void runCpuCycle()
+        {
+            cpuHalt = false;
+            cpuCycle();
+        }
+
+        public bool debugStepRoutine()
+        {
+            cpuStep();
+            updateTimers();
+            display.Source = Utli.loadBitmap(getScreenBitmap(screenBuffer));
+
+            //break point check
+            if (debugMode && (!cpuHalt))
+            {
+                for (int j = 0; j < brkPtAddresses.Count(); j++)
+                {
+                    if (pc == brkPtAddresses[j])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public bool isCpuRunning()
+        {
+            return !cpuHalt;
+        }
+
+
+        public void setDebuggerInterface(DebuggerWindow w)
+        {
+            debuggerWindow = w;
         }
 
 
@@ -546,6 +718,8 @@ namespace Chip8EmulatorWPF
             //TODO
         }
 
+
+        //TODO
         public void updateTimers()
         {
             // Update timers
@@ -556,24 +730,24 @@ namespace Chip8EmulatorWPF
             if (soundTimer > 0)
             {
                 --soundTimer;
-                Console.WriteLine("BEEP!");
+                //Console.WriteLine("BEEP!");
             }
         }
 
 
 
 
-        public Bitmap getScreenBitmap()
+        private Bitmap getScreenBitmap(byte[] _screenBuffer)
         {
             Bitmap bmp = new Bitmap(SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2);
             for (int y = 0; y < SCREEN_HEIGHT; y++)
             {
                 for (int x = 0; x < SCREEN_WIDTH; x++)
                 {
-                    bmp.SetPixel(x * 2, y * 2, pallete[screenBuffer[(y * SCREEN_WIDTH) + x]]);
-                    bmp.SetPixel(x * 2, y * 2 + 1, pallete[screenBuffer[(y * SCREEN_WIDTH) + x]]);
-                    bmp.SetPixel(x * 2 + 1, y * 2, pallete[screenBuffer[(y * SCREEN_WIDTH) + x]]);
-                    bmp.SetPixel(x * 2 + 1, y * 2 + 1, pallete[screenBuffer[(y * SCREEN_WIDTH) + x]]);
+                    bmp.SetPixel(x * 2, y * 2, pallete[_screenBuffer[(y * SCREEN_WIDTH) + x]]);
+                    bmp.SetPixel(x * 2, y * 2 + 1, pallete[_screenBuffer[(y * SCREEN_WIDTH) + x]]);
+                    bmp.SetPixel(x * 2 + 1, y * 2, pallete[_screenBuffer[(y * SCREEN_WIDTH) + x]]);
+                    bmp.SetPixel(x * 2 + 1, y * 2 + 1, pallete[_screenBuffer[(y * SCREEN_WIDTH) + x]]);
                 }
 
             }
@@ -581,149 +755,132 @@ namespace Chip8EmulatorWPF
             return bmp;
         }
 
-    
 
-
-        public Chip8CpuState getCpuState()
+        #region getter&setter property/methods
+        public bool DebugMode
         {
-            //save stack
-            ushort[] stack = new ushort[STACK_SIZE];
-            for (int i = STACK_BASE_ADDR; i < (STACK_BASE_ADDR + STACK_SIZE); i++)
-            {
-                stack[i - STACK_BASE_ADDR] = mainMemory[i];
-            }
-
-            return new Chip8CpuState(mainMemory, vRegs, Ireg, pc, stackPtr, stack, delayTimer, soundTimer);
+            get { return debugMode; }
+            set { debugMode = value; }
         }
 
-        public class Chip8CpuState
+
+        public byte[] Stack
         {
-            private byte[] memory;
-            private byte[] vRegs;
-            private ushort Ireg;
-            private ushort pc;
-            private ushort sp;
-            private ushort[] stack = new ushort[Chip8.STACK_SIZE];
-            private byte delayTimer;
-            private byte soundTimer;
-
-            public Chip8CpuState(byte[] memory, byte[] vRegs, ushort ireg, ushort pc, ushort sp, ushort[] stack, byte delayTimer, byte soundTImer)
+            get
             {
-                this.memory = memory;
-                this.vRegs = vRegs;
-                Ireg = ireg;
-                this.pc = pc;
-                this.Sp = sp;
-                this.stack = stack;
-                this.delayTimer = delayTimer;
-                this.soundTimer = soundTImer;
-            }
-
-            public byte[] Memory
-            {
-                get
-                {
-                    return memory;
-                }
-
-                set
-                {
-                    memory = value;
-                }
-            }
-
-            public byte[] VRegs
-            {
-                get
-                {
-                    return vRegs;
-                }
-
-                set
-                {
-                    vRegs = value;
-                }
-            }
-
-            public ushort Ireg1
-            {
-                get
-                {
-                    return Ireg;
-                }
-
-                set
-                {
-                    Ireg = value;
-                }
-            }
-
-            public ushort Pc
-            {
-                get
-                {
-                    return pc;
-                }
-
-                set
-                {
-                    pc = value;
-                }
-            }
-
-            public ushort[] Stack
-            {
-                get
-                {
-                    return stack;
-                }
-
-                set
-                {
-                    stack = value;
-                }
-            }
-
-            public byte DelayTimer
-            {
-                get
-                {
-                    return delayTimer;
-                }
-
-                set
-                {
-                    delayTimer = value;
-                }
-            }
-
-            public byte SoundTimer
-            {
-                get
-                {
-                    return soundTimer;
-                }
-
-                set
-                {
-                    soundTimer = value;
-                }
-            }
-
-            public ushort Sp
-            {
-                get
-                {
-                    return sp;
-                }
-
-                set
-                {
-                    sp = value;
-                }
+                return getStackValues();
             }
         }
 
+        private byte[] getStackValues()
+        {
+           if(stackPtr != STACK_BASE_ADDR)
+            {
+                
+                byte[] stackValues = new byte[STACK_BASE_ADDR - stackPtr];
+                int j = 0;
+                for(int i = (STACK_BASE_ADDR - 1); i >= stackPtr; i--)
+                {
+                    stackValues[j] = mainMemory[i];
+                    j++;
+                }
+                return stackValues;
+            }
+            return null;
+        }
+
+
+        public byte[] MainMemory
+        {
+            get
+            {
+                return mainMemory;
+            }
+
+            set
+            {
+                mainMemory = value;
+            }
+        }
+
+        public byte[] VRegs
+        {
+            get
+            {
+                return vRegs;
+            }
+
+            set
+            {
+                vRegs = value;
+            }
+        }
+
+        public ushort Ireg1
+        {
+            get
+            {
+                return Ireg;
+            }
+
+            set
+            {
+                Ireg = value;
+            }
+        }
+
+        public ushort Pc
+        {
+            get
+            {
+                return pc;
+            }
+
+            set
+            {
+                pc = value;
+            }
+        }
+
+        public ushort StackPtr
+        {
+            get
+            {
+                return stackPtr;
+            }
+
+            set
+            {
+                stackPtr = value;
+            }
+        }
+
+        public byte DelayTimer
+        {
+            get
+            {
+                return delayTimer;
+            }
+
+            set
+            {
+                delayTimer = value;
+            }
+        }
+
+        public byte SoundTimer
+        {
+            get
+            {
+                return soundTimer;
+            }
+
+            set
+            {
+                soundTimer = value;
+            }
+        }
+        #endregion getter&setter property/methods
 
     }
 }

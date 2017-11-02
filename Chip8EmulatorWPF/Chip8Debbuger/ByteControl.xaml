@@ -1,0 +1,35 @@
+﻿<UserControl x:Class="Chip8EmulatorWPF.ByteControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Chip8EmulatorWPF"
+             mc:Ignorable="d" 
+             Width="25"
+             Height="22"
+             d:DesignHeight="300" d:DesignWidth="300">
+    <Grid>
+        <Grid.ContextMenu>
+            <ContextMenu Name="CopyMenu">
+                <MenuItem Name="HexCopy" Header="Copy hexadecimal" IsEnabled="False"/>
+                <MenuItem Name="AsciiCopy" Header="Copy ASCII string" IsEnabled="False"/>
+            </ContextMenu>
+        </Grid.ContextMenu>
+        <Grid>
+
+            <Label x:Name="UpperNibble"
+               HorizontalAlignment="Left"
+               Padding="0"
+               Width="9"
+               VerticalContentAlignment="Center"
+               HorizontalContentAlignment="Center"
+               Focusable="True" />
+
+            <Label x:Name="LowerNibble"
+               Padding="0"
+               VerticalContentAlignment="Center"
+               Margin="9,0,0,0"
+               Focusable="True" />
+        </Grid>
+    </Grid>
+</UserControl>

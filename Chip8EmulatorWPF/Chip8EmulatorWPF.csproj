@@ -37,6 +37,7 @@
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Core" />
@@ -55,7 +56,40 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Chip8Debbuger\AsciiControl.xaml.cs">
+      <DependentUpon>AsciiControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Chip8Debbuger\ByteControl.xaml.cs">
+      <DependentUpon>ByteControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Chip8Debbuger\InstructionControl.xaml.cs">
+      <DependentUpon>InstructionControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Chip8Emulator\DecodedInstruction.cs" />
+    <Compile Include="Chip8Emulator\Game.cs" />
+    <Compile Include="Chip8Debbuger\DebuggerWindow.xaml.cs">
+      <DependentUpon>DebuggerWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Chip8Debbuger\HexEditor.xaml.cs">
+      <DependentUpon>HexEditor.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Utli.cs" />
+    <Page Include="Chip8Debbuger\AsciiControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Chip8Debbuger\ByteControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Chip8Debbuger\InstructionControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Chip8Debbuger\DebuggerWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -64,11 +98,15 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Chip8.cs" />
+    <Compile Include="Chip8Emulator\Chip8.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="Chip8Debbuger\HexEditor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">
@@ -96,6 +134,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="ImagesAsset\bullet_red.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

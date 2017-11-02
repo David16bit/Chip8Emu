@@ -15,7 +15,7 @@ using System.Windows.Shapes;
 using System.ComponentModel;
 using System.Drawing;
 using Microsoft.Win32;
-
+using System.Threading;
 
 namespace Chip8EmulatorWPF
 {
@@ -25,7 +25,7 @@ namespace Chip8EmulatorWPF
     public partial class MainWindow : Window
     {
         private Chip8 chip8;
-        BackgroundWorker worker;
+        private DebuggerWindow debuggerWindow;
 
         public MainWindow()
         {
@@ -42,17 +42,51 @@ namespace Chip8EmulatorWPF
             {
                 if (chip8.IsOn())
                 {
-                    chip8.powerOff();
-                }
+                    if (chip8.DebugMode)
+                    {
+                        //swaping in a new game while debugger window is open and processing
+                        if (chip8.isCpuRunning())
+                        {
+                            chip8.connectDisplay(null);
+                            chip8.powerOff();
+                        }
+                        chip8.setDebuggerInterface(null);
+                        chip8.clearDisplay();
+                        screen.UpdateLayout();
 
-                chip8.insertGame(openFileDialog.FileName);
-                chip8.powerOn();
+                        chip8 = new Chip8();
+                        chip8.connectDisplay(screen);
+                        chip8.loadGame(openFileDialog.FileName);
+                        debuggerWindow.Chip8 = chip8;
+                        debuggerWindow.initRoutine();
+                    }
+                    else
+                    {
+                        //swaping in a new game when only the main window is open
+                        chip8.swapGame(openFileDialog.FileName);
+                    }
+                }
+                else
+                {
+                    chip8.loadGame(openFileDialog.FileName);
+                    chip8.powerOn();
+
+                    if (chip8.DebugMode)// debugger window is open but no game is being processed by it
+                    {
+                        debuggerWindow.initRoutine();
+                    }
+                }  
             }
         }
 
-
-        
-     
+        private void CPUVItem_Click(object sender, RoutedEventArgs e)
+        {
+            debuggerWindow = new DebuggerWindow();
+            debuggerWindow.Chip8 = chip8;
+            debuggerWindow.GameWindow = this;
+            debuggerWindow.Show();
+            debuggerWindow.OpenWin = true;
+        }
 
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -195,6 +229,18 @@ namespace Chip8EmulatorWPF
                     chip8.gamePad[0x0F] = 0;
                 }
             }
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            if (debuggerWindow != null)
+            {
+                if (debuggerWindow.OpenWin)
+                {
+                    debuggerWindow.Close();
+                }
+            }
+            //System.Windows.Application.Current.Shutdown();
         }
     }
 }

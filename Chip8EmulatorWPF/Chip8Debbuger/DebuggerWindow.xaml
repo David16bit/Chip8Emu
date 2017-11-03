@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Chip8EmulatorWPF"
         mc:Ignorable="d"
-        Title="Debugger" Height="582.955" Width="1075.191" Loaded="Window_Loaded" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Closing="Window_Closing">
+        Title="Debugger" Height="582.955" Width="1075.191" Loaded="Window_Loaded" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" Closing="Window_Closing" ResizeMode="CanMinimize">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="12*" />

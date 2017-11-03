@@ -15,9 +15,15 @@ namespace Chip8EmulatorWPF.Chip8Emulator
     class Game
     {
         private String path;
+        private String romTitle;
         private byte[] rom;
         private bool[] addrDecodeCheck;
         private List<DecodedInstruction> decodedRom;
+
+        public string RomTitle
+        {
+            get { return romTitle; }
+        }
 
         public string Path
         {
@@ -39,6 +45,8 @@ namespace Chip8EmulatorWPF.Chip8Emulator
         public void loadRom(String path)
         {
             this.path = path;
+            string[] temp = path.Split('\\');
+            romTitle = temp[temp.Length - 1];
 
             rom = File.ReadAllBytes(path);
 

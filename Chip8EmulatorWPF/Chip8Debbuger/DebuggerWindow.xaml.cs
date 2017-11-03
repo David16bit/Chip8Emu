@@ -127,6 +127,7 @@ namespace Chip8EmulatorWPF
 
                 chip8.brkPtAddresses.Clear();
                 breakPtList.Items.Clear();
+                this.Title = "Debugger - " + chip8.game.RomTitle;
             }
             else if(chip8.isRomLoaded())
             {
@@ -142,6 +143,7 @@ namespace Chip8EmulatorWPF
 
                 chip8.brkPtAddresses.Clear();
                 breakPtList.Items.Clear();
+                this.Title = "Debugger - " + chip8.game.RomTitle;
             }
             else
             {

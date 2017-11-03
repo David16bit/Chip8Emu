@@ -73,7 +73,7 @@ namespace Chip8EmulatorWPF
       
 
         //rom
-        private Game game;
+        public Game game;
         private string gameToBeLoaded;
         private bool swapGameFlag;
      

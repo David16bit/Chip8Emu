@@ -8,7 +8,7 @@ Things to still do:
 * Allow the user to alter key inputs.
 * Fix bugs with certain roms.
 * Sound.
-* Save States.
+* Save States/ Load States.
 
 ## Screenshots
 ![Space Invaders](Screenshots/screenshot1.jpg)
